@@ -1,0 +1,10 @@
+# Netlify Configuration for Doctor Appointment Queue System
+[build]
+  publish = "frontend/public"
+
+# SPA fallback rule
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  conditions = {Role = ["*"]}
