@@ -369,16 +369,21 @@
   <!-- Admin JavaScript -->
   <script>
     const ADMIN_PIN = "1234";
-    let isStaticMode = false;
+    let isStaticMode = window.location.hostname.endsWith('netlify.app') || window.location.hostname.endsWith('github.io') || window.location.protocol === 'file:';
 
     // Unified API caller with automatic fallback to client-side DSA Engine (e.g. Netlify / Static hosting)
     async function apiCall(endpoint, method = 'GET', body = null) {
+      if (isStaticMode) {
+        return handleStaticFallback(endpoint, method, body);
+      }
       try {
         const options = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) options.body = JSON.stringify(body);
         const res = await fetch(endpoint, options);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        isStaticMode = false;
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('application/json')) {
+          throw new Error('Not JSON: HTTP ' + res.status);
+        }
         return await res.json();
       } catch (err) {
         isStaticMode = true;
@@ -431,45 +436,49 @@
 
     // Check authentication state on page load
     function checkAuth() {
-      const isAuth = sessionStorage.getItem('careplus_admin_auth') === 'true';
+      const isAuth = sessionStorage.getItem('careplus_admin_auth') === 'true' || localStorage.getItem('careplus_admin_auth') === 'true';
       const pinScreen = document.getElementById('pinScreen');
       const dashboard = document.getElementById('adminDashboard');
       const logoutBtn = document.getElementById('logoutBtn');
 
       if (isAuth) {
-        pinScreen.style.display = 'none';
-        dashboard.style.display = 'block';
-        logoutBtn.style.display = 'inline-flex';
+        if (pinScreen) pinScreen.style.display = 'none';
+        if (dashboard) dashboard.style.display = 'block';
+        if (logoutBtn) logoutBtn.style.display = 'inline-flex';
         fetchAdminStatus();
       } else {
-        pinScreen.style.display = 'block';
-        dashboard.style.display = 'none';
-        logoutBtn.style.display = 'none';
+        if (pinScreen) pinScreen.style.display = 'block';
+        if (dashboard) dashboard.style.display = 'none';
+        if (logoutBtn) logoutBtn.style.display = 'none';
       }
     }
 
     // Handle PIN login
     function handlePinLogin(event) {
-      event.preventDefault();
+      if (event) event.preventDefault();
       const pinInput = document.getElementById('pinInput');
       const pinError = document.getElementById('pinError');
-      const pinVal = pinInput.value.trim();
+      const pinVal = pinInput ? pinInput.value.trim() : '';
 
       if (pinVal === ADMIN_PIN) {
-        pinError.classList.remove('visible');
+        if (pinError) pinError.classList.remove('visible');
         sessionStorage.setItem('careplus_admin_auth', 'true');
+        localStorage.setItem('careplus_admin_auth', 'true');
         checkAuth();
         showToast('Admin dashboard unlocked', 'success');
       } else {
-        pinError.classList.add('visible');
-        pinInput.value = '';
-        pinInput.focus();
+        if (pinError) pinError.classList.add('visible');
+        if (pinInput) {
+          pinInput.value = '';
+          pinInput.focus();
+        }
       }
     }
 
     // Logout
     function handleLogout() {
       sessionStorage.removeItem('careplus_admin_auth');
+      localStorage.removeItem('careplus_admin_auth');
       checkAuth();
       showToast('Logged out of admin portal');
     }
@@ -767,13 +776,6 @@
         const data = await apiCall('/api/settings', 'POST', { avgTime, emergencyTime, dailyLimit });
 
         showToast(`Settings saved: Avg=${data.avgTime}m, Emergency=${data.emergencyTime}m, Limit=${data.dailyLimit}/day`, 'success');
-        fetchAdminStatus();
-      } catch (err) {
-        showToast('Error saving settings', 'error');
-      } finally {
-        btn.disabled = false;
-      }
-    }
         fetchAdminStatus();
       } catch (err) {
         showToast('Error saving settings', 'error');

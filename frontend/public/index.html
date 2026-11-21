@@ -399,16 +399,21 @@
     let lastKnownCurrentToken = null;
     let savedMyToken = localStorage.getItem('careplus_my_token') ? parseInt(localStorage.getItem('careplus_my_token')) : null;
     let loggedInPatientName = localStorage.getItem('careplus_patient_name') || null;
-    let isStaticMode = false;
+    let isStaticMode = window.location.hostname.endsWith('netlify.app') || window.location.hostname.endsWith('github.io') || window.location.protocol === 'file:';
 
     // Unified API caller with automatic fallback to client-side DSA Engine (e.g. Netlify / Static hosting)
     async function apiCall(endpoint, method = 'GET', body = null) {
+      if (isStaticMode) {
+        return handleStaticFallback(endpoint, method, body);
+      }
       try {
         const options = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) options.body = JSON.stringify(body);
         const res = await fetch(endpoint, options);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        isStaticMode = false;
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('application/json')) {
+          throw new Error('Not JSON: HTTP ' + res.status);
+        }
         return await res.json();
       } catch (err) {
         // Fallback to client-side DSA engine when backend is offline or deployed statically
@@ -492,22 +497,25 @@
 
     // Handle Option 2: Admin Login (PIN 1234)
     function handleAdminLoginSubmit(event) {
-      event.preventDefault();
+      if (event) event.preventDefault();
       const pinInput = document.getElementById('loginAdminPin');
       const pinError = document.getElementById('loginAdminPinError');
-      const pin = pinInput.value.trim();
+      const pin = pinInput ? pinInput.value.trim() : '';
 
       if (pin === "1234") {
-        pinError.classList.remove('visible');
+        if (pinError) pinError.classList.remove('visible');
         sessionStorage.setItem('careplus_admin_auth', 'true');
+        localStorage.setItem('careplus_admin_auth', 'true');
         showToast('Admin authenticated! Redirecting to Doctor Portal...', 'success');
         setTimeout(() => {
           window.location.href = 'admin.html';
-        }, 500);
+        }, 400);
       } else {
-        pinError.classList.add('visible');
-        pinInput.value = '';
-        pinInput.focus();
+        if (pinError) pinError.classList.add('visible');
+        if (pinInput) {
+          pinInput.value = '';
+          pinInput.focus();
+        }
       }
     }
 
