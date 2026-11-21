@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin & Doctor Portal - CarePlus Queue</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="dsa-engine.js"></script>
+</head>
+<body>
+
+  <!-- Offline Alert Banner -->
+  <div id="offlineBanner" class="offline-banner">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="8" x2="12" y2="12"></line>
+      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+    </svg>
+    <span>Backend Offline: Java server is not running on port 8080. Start with <code>javac *.java && java Server</code></span>
+  </div>
+
+  <!-- Emergency In Progress Banner -->
+  <div id="emergencyBanner" class="emergency-banner">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+      <line x1="12" y1="9" x2="12" y2="13"></line>
+      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+    </svg>
+    <span>EMERGENCY MODE ACTIVE — Doctor is prioritizing the Emergency Stack (LIFO)</span>
+  </div>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-texture"></div>
+    <div class="header-container">
+      <a href="index.html" class="brand-wrapper">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <rect x="2" y="3" width="20" height="18" rx="4"></rect>
+            <path d="M12 8v8"></path>
+            <path d="M8 12h8"></path>
+          </svg>
+        </div>
+        <div>
+          <span class="brand-title">Doctor / Admin Portal</span>
+          <span class="brand-tagline">CarePlus Clinic • Queue & Stack Controller</span>
+        </div>
+      </a>
+
+      <nav class="header-nav">
+        <span class="status-pill" id="systemStatusPill">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">System Live</span>
+        </span>
+        <a href="index.html" class="nav-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          Patient View
+        </a>
+        <button id="logoutBtn" class="nav-link" onclick="handleLogout()" style="display: none; cursor: pointer;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          Logout
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- 1. PIN Screen (Shown when not authenticated) -->
+    <div id="pinScreen" class="pin-screen-container card">
+      <div class="pin-icon-wrap">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 0.4rem;">Doctor / Admin Access</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+        Enter admin security PIN to manage queues and doctor consultation. Demo PIN is <strong>1234</strong>.
+      </p>
+
+      <form onsubmit="handlePinLogin(event)">
+        <div class="form-group" style="text-align: left;">
+          <label class="form-label" for="pinInput">Security PIN</label>
+          <input type="password" id="pinInput" class="form-input" placeholder="Enter PIN (1234)" maxlength="8" autofocus required style="text-align: center; font-size: 1.25rem; letter-spacing: 0.25em;">
+          <div id="pinError" class="form-error" style="text-align: center;">Incorrect PIN. Please try again.</div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          Unlock Admin Dashboard
+        </button>
+
+        <div style="text-align: center; margin-top: 1.25rem;">
+          <a href="index.html" class="nav-link" style="display: inline-flex; justify-content: center; width: 100%;">
+            ← Switch to Patient Login (Name Only)
+          </a>
+        </div>
+      </form>
+    </div>
+
+    <!-- 2. Admin Dashboard (Shown after entering PIN) -->
+    <div id="adminDashboard" style="display: none;">
+
+      <!-- Quick Action Controls -->
+      <div class="card" style="margin-bottom: 1.75rem;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Doctor Consultation Controls</h2>
+            <p class="card-subtitle">Call the next patient or inject emergency cases into the LIFO stack</p>
+          </div>
+          <div id="currentServingIndicator" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">In Doctor's Room:</span>
+            <strong id="inRoomLabel" style="color: var(--accent-orange);">None</strong>
+          </div>
+        </div>
+
+        <div class="admin-actions-bar">
+          <!-- Call Next Patient Button -->
+          <button class="btn btn-orange" onclick="callNextPatient()" id="callNextBtn" style="flex: 1.2; font-size: 1.05rem;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            Call Next Patient
+          </button>
+
+          <!-- Add Emergency Button -->
+          <button class="btn btn-danger" onclick="openEmergencyModal()" id="addEmergencyBtn" style="flex: 1; font-size: 1.05rem;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            Add Emergency Case
+          </button>
+        </div>
+      </div>
+
+      <!-- Settings Card -->
+      <section class="card" style="margin-bottom: 1.75rem;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand-sky-deep)" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              Consultation Time Settings
+            </h2>
+            <p class="card-subtitle">Configure average duration used by the waiting time formula</p>
+          </div>
+        </div>
+
+        <form onsubmit="handleSaveSettings(event)" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 180px;">
+            <label class="form-label" for="settingAvgTime">Avg Normal Patient (minutes)</label>
+            <input type="number" id="settingAvgTime" class="form-input" min="1" max="120" required>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 180px;">
+            <label class="form-label" for="settingEmergencyTime">Emergency Duration (minutes)</label>
+            <input type="number" id="settingEmergencyTime" class="form-input" min="1" max="180" required>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="saveSettingsBtn" style="height: 48px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            Save Settings
+          </button>
+        </form>
+      </section>
+
+      <!-- Side-by-Side Visual Panels: Queue (FIFO) vs Emergency Stack (LIFO) -->
+      <div class="dsa-panels-container">
+
+        <!-- Panel 1: Queue (FIFO) -->
+        <section class="card fifo-queue-panel">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">
+                <span style="color: var(--brand-sky-deep);">Queue (FIFO)</span> — Normal Appointments
+              </h2>
+              <p class="card-subtitle">First In, First Out order • Served after Emergency Stack is empty</p>
+            </div>
+            <span class="status-pill" id="adminQueueCountBadge">0 in Queue</span>
+          </div>
+
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            ← Next to enter doctor's room | Leftmost patient is served first
+          </p>
+
+          <!-- Horizontal track representing the Queue line -->
+          <div class="fifo-track-container">
+            <div id="fifoTrack" class="fifo-track">
+              <!-- Rendered via JS -->
+              <div class="empty-state">No regular appointments in queue</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel 2: Emergency Stack (LIFO) -->
+        <section class="card lifo-stack-panel" id="lifoStackPanel">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title" style="color: var(--emergency-red);">
+                <span style="color: var(--emergency-red);">Stack (LIFO)</span> — Emergency Cases
+              </h2>
+              <p class="card-subtitle">Last In, First Out order • Highest Priority (Preempts Queue)</p>
+            </div>
+            <span class="status-pill" id="adminEmergencyCountBadge" style="background: var(--emergency-red-pale); color: var(--emergency-red); border-color: var(--emergency-red-border);">
+              0 Emergencies
+            </span>
+          </div>
+
+          <p style="font-size: 0.8rem; color: var(--emergency-red); margin-bottom: 0.75rem; font-weight: 500;">
+            ⬇ Top of stack is served next!
+          </p>
+
+          <!-- Vertical stack container: open at top, closed base at bottom -->
+          <div class="stack-container" id="lifoStackContainer">
+            <!-- Rendered via JS -->
+            <div class="empty-state" style="color: #BA252A;">
+              Emergency stack is empty. No urgent cases.
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Emergency Modal Popup -->
+  <div id="emergencyModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 class="modal-title" style="color: var(--emergency-red); display: flex; align-items: center; gap: 0.5rem;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        Add Emergency Patient
+      </h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+        Emergency patients are pushed to the top of the Stack (LIFO) and will be called before any regular queue patients.
+      </p>
+
+      <form onsubmit="handleEmergencySubmit(event)">
+        <div class="form-group">
+          <label class="form-label" for="emergencyPatientName">Case / Patient Name *</label>
+          <input type="text" id="emergencyPatientName" class="form-input" placeholder="e.g. Acute Trauma / Sunita Rao" required autofocus>
+          <div id="emergencyNameError" class="form-error">Please enter the emergency patient's name or case title.</div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="closeEmergencyModal()">Cancel</button>
+          <button type="submit" class="btn btn-danger" id="emergencySubmitBtn">Push to Emergency Stack</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <p>Doctor Appointment Queue System • Data Structures & Algorithms Project</p>
+    <p class="footer-highlight">Made by Susmit Choudhury | Reg No: 12517025 | B.Tech CSE (Data Science & ML), Lovely Professional University</p>
+  </footer>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast"></div>
+
+  <!-- Admin JavaScript -->
+  <script>
+    const ADMIN_PIN = "1234";
+    let isStaticMode = false;
+
+    // Unified API caller with automatic fallback to client-side DSA Engine (e.g. Netlify / Static hosting)
+    async function apiCall(endpoint, method = 'GET', body = null) {
+      try {
+        const options = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) options.body = JSON.stringify(body);
+        const res = await fetch(endpoint, options);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        isStaticMode = false;
+        return await res.json();
+      } catch (err) {
+        isStaticMode = true;
+        return handleStaticFallback(endpoint, method, body);
+      }
+    }
+
+    function handleStaticFallback(endpoint, method, body) {
+      if (typeof DSAEngine === 'undefined') {
+        throw new Error('DSA Engine not loaded');
+      }
+      if (endpoint.startsWith('/api/status')) {
+        return DSAEngine.getStatus();
+      }
+      if (endpoint.startsWith('/api/book')) {
+        return DSAEngine.book(body.name, body.phone);
+      }
+      if (endpoint.startsWith('/api/wait')) {
+        const url = new URL(endpoint, window.location.origin);
+        const token = parseInt(url.searchParams.get('token'));
+        return DSAEngine.getWait(token);
+      }
+      if (endpoint.startsWith('/api/emergency')) {
+        return DSAEngine.addEmergency(body.name);
+      }
+      if (endpoint.startsWith('/api/next')) {
+        return DSAEngine.callNext();
+      }
+      if (endpoint.startsWith('/api/cancel')) {
+        return DSAEngine.cancel(body.token);
+      }
+      if (endpoint.startsWith('/api/settings')) {
+        return DSAEngine.saveSettings(body.avgTime, body.emergencyTime);
+      }
+      return { error: 'Unknown endpoint' };
+    }
+
+    // Show temporary toast message
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast visible ' + (type === 'error' ? 'toast-error' : type === 'success' ? 'toast-success' : '');
+      setTimeout(() => {
+        toast.className = 'toast';
+      }, 3500);
+    }
+
+    // Check authentication state on page load
+    function checkAuth() {
+      const isAuth = sessionStorage.getItem('careplus_admin_auth') === 'true';
+      const pinScreen = document.getElementById('pinScreen');
+      const dashboard = document.getElementById('adminDashboard');
+      const logoutBtn = document.getElementById('logoutBtn');
+
+      if (isAuth) {
+        pinScreen.style.display = 'none';
+        dashboard.style.display = 'block';
+        logoutBtn.style.display = 'inline-flex';
+        fetchAdminStatus();
+      } else {
+        pinScreen.style.display = 'block';
+        dashboard.style.display = 'none';
+        logoutBtn.style.display = 'none';
+      }
+    }
+
+    // Handle PIN login
+    function handlePinLogin(event) {
+      event.preventDefault();
+      const pinInput = document.getElementById('pinInput');
+      const pinError = document.getElementById('pinError');
+      const pinVal = pinInput.value.trim();
+
+      if (pinVal === ADMIN_PIN) {
+        pinError.classList.remove('visible');
+        sessionStorage.setItem('careplus_admin_auth', 'true');
+        checkAuth();
+        showToast('Admin dashboard unlocked', 'success');
+      } else {
+        pinError.classList.add('visible');
+        pinInput.value = '';
+        pinInput.focus();
+      }
+    }
+
+    // Logout
+    function handleLogout() {
+      sessionStorage.removeItem('careplus_admin_auth');
+      checkAuth();
+      showToast('Logged out of admin portal');
+    }
+
+    // Fetch and render admin status
+    async function fetchAdminStatus() {
+      if (sessionStorage.getItem('careplus_admin_auth') !== 'true') return;
+
+      try {
+        const data = await apiCall('/api/status');
+
+        // Online status
+        document.getElementById('offlineBanner').classList.remove('visible');
+        document.getElementById('statusDot').classList.remove('offline');
+        document.getElementById('statusText').textContent = isStaticMode ? 'Static Demo Mode' : 'System Live';
+
+        // Emergency banner
+        const emergencyBanner = document.getElementById('emergencyBanner');
+        const stackPanel = document.getElementById('lifoStackPanel');
+        if (data.emergencyMode) {
+          emergencyBanner.classList.add('visible');
+          stackPanel.classList.add('active-emergency');
+        } else {
+          emergencyBanner.classList.remove('visible');
+          stackPanel.classList.remove('active-emergency');
+        }
+
+        // Current serving patient
+        const inRoomLabel = document.getElementById('inRoomLabel');
+        if (data.current) {
+          inRoomLabel.textContent = `${data.current.label} - ${data.current.name} ${data.current.emergency ? '(Emergency)' : ''}`;
+          inRoomLabel.style.color = data.current.emergency ? 'var(--emergency-red)' : 'var(--accent-orange)';
+        } else {
+          inRoomLabel.textContent = 'None (Room Empty)';
+          inRoomLabel.style.color = 'var(--text-muted)';
+        }
+
+        // Settings input fields (fill if user hasn't modified)
+        const avgInput = document.getElementById('settingAvgTime');
+        const emgInput = document.getElementById('settingEmergencyTime');
+        if (!avgInput.matches(':focus')) avgInput.value = data.avgTime;
+        if (!emgInput.matches(':focus')) emgInput.value = data.emergencyTime;
+
+        // Render Panels
+        renderFifoQueue(data.queue);
+        renderLifoStack(data.emergencies);
+
+      } catch (err) {
+        document.getElementById('offlineBanner').classList.add('visible');
+        document.getElementById('statusDot').classList.add('offline');
+        document.getElementById('statusText').textContent = 'Offline';
+      }
+    }
+
+    // Render Queue (FIFO) - Horizontal Track
+    function renderFifoQueue(queue) {
+      const track = document.getElementById('fifoTrack');
+      const badge = document.getElementById('adminQueueCountBadge');
+      badge.textContent = `${queue.length} in Queue`;
+
+      if (!queue || queue.length === 0) {
+        track.innerHTML = `<div class="empty-state" style="padding: 1rem; width: 100%;">No regular appointments in queue.</div>`;
+        return;
+      }
+
+      let html = '';
+      queue.forEach((patient, idx) => {
+        html += `
+          <div class="fifo-token-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="token-chip orange-chip" style="min-width: 32px; height: 32px; font-size: 0.85rem;">#${patient.label}</span>
+              <button class="btn btn-outline btn-sm" onclick="cancelPatient(${patient.token})" title="Cancel Appointment" style="color: var(--emergency-red); border-color: var(--emergency-red-border); padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+                Cancel
+              </button>
+            </div>
+            <div style="font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(patient.name)}">
+              ${escapeHtml(patient.name)}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">
+              Wait: ~${patient.wait} min
+            </div>
+            <div style="font-size: 0.7rem; color: var(--brand-sky-darker); font-weight: 600;">
+              Queue Pos: ${idx + 1}
+            </div>
+          </div>
+        `;
+        if (idx < queue.length - 1) {
+          html += `<div class="fifo-arrow">→</div>`;
+        }
+      });
+
+      track.innerHTML = html;
+    }
+
+    // Render Stack (LIFO) - Vertical physical stack
+    function renderLifoStack(emergencies) {
+      const container = document.getElementById('lifoStackContainer');
+      const badge = document.getElementById('adminEmergencyCountBadge');
+      badge.textContent = `${emergencies.length} Emergencies`;
+
+      if (!emergencies || emergencies.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="color: #BA252A; padding: 1.5rem 0.5rem;">
+            Emergency stack is empty. No urgent cases waiting.
+          </div>
+        `;
+        return;
+      }
+
+      // emergencies is returned top-first from backend: [E2, E1]
+      // Because flex-direction: column-reverse, the first child appears at the top of the stack
+      let html = '';
+      emergencies.forEach((item, idx) => {
+        const isTop = (idx === 0);
+        html += `
+          <div class="stack-item ${isTop ? 'top-item' : ''}">
+            <div style="display: flex; align-items: center; gap: 0.65rem;">
+              <span class="token-chip red-chip" style="min-width: 34px; height: 34px; font-size: 0.85rem;">${item.label}</span>
+              <div>
+                <strong style="color: var(--text-main); font-size: 0.95rem;">${escapeHtml(item.name)}</strong>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Stack Index: ${emergencies.length - idx}</div>
+              </div>
+            </div>
+            ${isTop ? `
+              <span class="top-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+                NEXT OUT (LIFO Top)
+              </span>
+            ` : ''}
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // Call Next Patient
+    async function callNextPatient() {
+      const btn = document.getElementById('callNextBtn');
+      btn.disabled = true;
+
+      try {
+        const data = await apiCall('/api/next', 'POST');
+
+        if (data.current) {
+          const type = data.current.emergency ? 'Emergency' : 'Regular';
+          showToast(`Now Serving: ${data.current.label} - ${data.current.name} (${type})`, 'success');
+        } else {
+          showToast('No patients waiting in queue or emergency stack', 'info');
+        }
+        fetchAdminStatus();
+      } catch (err) {
+        showToast('Error calling next patient', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Modal controls
+    function openEmergencyModal() {
+      document.getElementById('emergencyModal').classList.add('visible');
+      document.getElementById('emergencyPatientName').value = '';
+      document.getElementById('emergencyNameError').classList.remove('visible');
+      document.getElementById('emergencyPatientName').focus();
+    }
+
+    function closeEmergencyModal() {
+      document.getElementById('emergencyModal').classList.remove('visible');
+    }
+
+    // Handle Emergency Submission
+    async function handleEmergencySubmit(event) {
+      event.preventDefault();
+      const input = document.getElementById('emergencyPatientName');
+      const error = document.getElementById('emergencyNameError');
+      const name = input.value.trim();
+
+      if (!name) {
+        error.classList.add('visible');
+        input.focus();
+        return;
+      }
+      error.classList.remove('visible');
+
+      const btn = document.getElementById('emergencySubmitBtn');
+      btn.disabled = true;
+
+      try {
+        const data = await apiCall('/api/emergency', 'POST', { name });
+
+        showToast(`Emergency ${data.label} (${data.name}) pushed to Stack!`, 'error');
+        closeEmergencyModal();
+        fetchAdminStatus();
+      } catch (err) {
+        showToast('Error pushing emergency to stack', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Save Consultation Time Settings
+    async function handleSaveSettings(event) {
+      event.preventDefault();
+      const avgTime = parseInt(document.getElementById('settingAvgTime').value);
+      const emergencyTime = parseInt(document.getElementById('settingEmergencyTime').value);
+
+      if (isNaN(avgTime) || avgTime <= 0 || isNaN(emergencyTime) || emergencyTime <= 0) {
+        showToast('Please provide valid positive minute values', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('saveSettingsBtn');
+      btn.disabled = true;
+
+      try {
+        const data = await apiCall('/api/settings', 'POST', { avgTime, emergencyTime });
+
+        showToast(`Settings saved: Avg=${data.avgTime}m, Emergency=${data.emergencyTime}m`, 'success');
+        fetchAdminStatus();
+      } catch (err) {
+        showToast('Error saving settings', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Cancel queued patient
+    async function cancelPatient(token) {
+      const confirmed = confirm(`Cancel appointment for Token #${token}?`);
+      if (!confirmed) return;
+
+      try {
+        const data = await apiCall('/api/cancel', 'POST', { token });
+
+        if (data.success) {
+          showToast(`Token #${token} cancelled successfully`, 'success');
+          fetchAdminStatus();
+        } else {
+          showToast('Cannot cancel: Patient already called or not found in queue', 'error');
+        }
+      } catch (err) {
+        showToast('Error cancelling appointment', 'error');
+      }
+    }
+
+    // Helper: Escape HTML
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      checkAuth();
+      setInterval(fetchAdminStatus, 3000); // Poll every 3 seconds
+
+      // Listen for updates across tabs when running in static mode
+      window.addEventListener('storage', fetchAdminStatus);
+      window.addEventListener('dsa-state-updated', fetchAdminStatus);
+    });
+  </script>
+</body>
+</html>

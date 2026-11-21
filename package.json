@@ -1,0 +1,8 @@
+{
+  "name": "doctor-appointment-queue-system",
+  "version": "1.0.0",
+  "description": "Doctor Appointment Queue System",
+  "scripts": {
+    "build": "echo 'Ready for Netlify'"
+  }
+}
