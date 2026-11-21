@@ -11,17 +11,22 @@ const DSAEngine = (() => {
   function getState() {
     const defaultState = {
       current: null,
-      queue: [],         // Normal FIFO Queue: [ {token, label, name, phone, wait} ]
+      queue: [],         // Normal FIFO Queue: [ {token, label, name, phone, age, gender, date, wait} ]
       emergencies: [],   // Emergency LIFO Stack: [ {token, label, name, phone} ] (top is index 0)
       normalCounter: 0,
       emergencyCounter: 0,
       avgTime: 10,
-      emergencyTime: 20
+      emergencyTime: 20,
+      dailyLimit: 20     // Max patients allowed per day
     };
 
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.dailyLimit) parsed.dailyLimit = 20;
+        return parsed;
+      }
     } catch (e) {
       console.warn('Could not read DSA state from localStorage', e);
     }
@@ -36,6 +41,12 @@ const DSAEngine = (() => {
     } catch (e) {
       console.warn('Could not save DSA state to localStorage', e);
     }
+  }
+
+  // Count patients currently in queue for a given calendar date
+  function countForDate(state, dateStr) {
+    if (!dateStr) return 0;
+    return state.queue.filter(p => p.date === dateStr).length;
   }
 
   // Calculate waiting time for a token in the queue
@@ -66,6 +77,9 @@ const DSAEngine = (() => {
         label: p.label,
         name: p.name,
         phone: p.phone,
+        age: p.age || 0,
+        gender: p.gender || 'Other',
+        date: p.date || '',
         wait: computeWait(state, p.token)
       }));
 
@@ -73,6 +87,7 @@ const DSAEngine = (() => {
         emergencyMode: state.emergencies.length > 0,
         avgTime: state.avgTime,
         emergencyTime: state.emergencyTime,
+        dailyLimit: state.dailyLimit || 20,
         current: state.current,
         queue: calculatedQueue,
         emergencies: state.emergencies.map(e => ({
@@ -83,15 +98,33 @@ const DSAEngine = (() => {
       };
     },
 
-    // 2. Book Appointment (Enqueue to Queue - FIFO)
-    book(name, phone) {
+    // 2. Book Appointment (Enqueue to Queue - FIFO) with daily capacity limit
+    book(name, phone, age = 0, gender = 'Other', date = null) {
       const state = getState();
       state.normalCounter++;
+
+      const today = new Date().toISOString().split('T')[0];
+      let assignedDate = date || today;
+      let rolledOver = false;
+      const originalDate = assignedDate;
+      const limit = state.dailyLimit || 20;
+
+      // Check daily capacity limit: if full, auto roll over to next available date
+      let checkDate = new Date(assignedDate);
+      while (countForDate(state, checkDate.toISOString().split('T')[0]) >= limit) {
+        checkDate.setDate(checkDate.getDate() + 1);
+        rolledOver = true;
+      }
+      assignedDate = checkDate.toISOString().split('T')[0];
+
       const patient = {
         token: state.normalCounter,
         label: String(state.normalCounter),
         name: name.trim(),
         phone: (phone || '').trim(),
+        age: parseInt(age) || 0,
+        gender: gender || 'Other',
+        date: assignedDate,
         emergency: false,
         status: 'WAITING'
       };
@@ -105,7 +138,12 @@ const DSAEngine = (() => {
         token: patient.token,
         name: patient.name,
         phone: patient.phone,
-        wait: wait
+        age: patient.age,
+        gender: patient.gender,
+        date: patient.date,
+        wait: wait,
+        rolledOver: rolledOver,
+        originalDate: originalDate
       };
     },
 
@@ -133,7 +171,24 @@ const DSAEngine = (() => {
       };
     },
 
-    // 4. Doctor Calls Next (LIFO Stack first, then FIFO Queue)
+    // 4. End Emergency Mode / Clear Emergency Stack
+    endEmergency() {
+      const state = getState();
+      state.emergencies = [];
+      if (state.current && state.current.emergency) {
+        state.current.status = 'DONE';
+        state.current = null;
+      }
+      saveState(state);
+      return {
+        success: true,
+        emergencyEnded: true,
+        emergencyMode: false,
+        message: 'Emergency mode ended. Regular queue resumed.'
+      };
+    },
+
+    // 5. Doctor Calls Next (LIFO Stack first, then FIFO Queue)
     callNext() {
       const state = getState();
 
@@ -161,7 +216,7 @@ const DSAEngine = (() => {
       };
     },
 
-    // 5. Cancel Appointment
+    // 6. Cancel Appointment
     cancel(token) {
       const state = getState();
       const index = state.queue.findIndex(p => p.token === token);
@@ -173,7 +228,7 @@ const DSAEngine = (() => {
       return { success: false, message: 'Patient not found in queue or already called' };
     },
 
-    // 6. Track Wait Time
+    // 7. Track Wait Time
     getWait(token) {
       const state = getState();
 
@@ -183,6 +238,9 @@ const DSAEngine = (() => {
           found: true,
           label: state.current.label,
           name: state.current.name,
+          age: state.current.age || 0,
+          gender: state.current.gender || 'Other',
+          date: state.current.date || '',
           position: 0,
           wait: 0,
           status: 'SERVING'
@@ -197,6 +255,9 @@ const DSAEngine = (() => {
           found: true,
           label: p.label,
           name: p.name,
+          age: p.age || 0,
+          gender: p.gender || 'Other',
+          date: p.date || '',
           position: index + 1,
           wait: wait,
           status: 'WAITING'
@@ -206,16 +267,18 @@ const DSAEngine = (() => {
       return { found: false, message: 'Token not in waiting queue' };
     },
 
-    // 7. Save Settings
-    saveSettings(avgTime, emergencyTime) {
+    // 8. Save Settings (avgTime, emergencyTime, dailyLimit)
+    saveSettings(avgTime, emergencyTime, dailyLimit) {
       const state = getState();
       if (avgTime > 0) state.avgTime = avgTime;
       if (emergencyTime > 0) state.emergencyTime = emergencyTime;
+      if (dailyLimit > 0) state.dailyLimit = dailyLimit;
       saveState(state);
       return {
         success: true,
         avgTime: state.avgTime,
-        emergencyTime: state.emergencyTime
+        emergencyTime: state.emergencyTime,
+        dailyLimit: state.dailyLimit
       };
     }
   };

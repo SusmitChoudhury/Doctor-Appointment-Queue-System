@@ -135,12 +135,31 @@
             Call Next Patient
           </button>
 
+          <!-- Register Walk-in Patient -->
+          <button class="btn btn-primary" onclick="openWalkinModal()" style="flex: 1.1; font-size: 1.05rem;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="8.5" cy="7" r="4"></circle>
+              <line x1="20" y1="8" x2="20" y2="14"></line>
+              <line x1="23" y1="11" x2="17" y2="11"></line>
+            </svg>
+            Walk-in Patient Booking
+          </button>
+
           <!-- Add Emergency Button -->
           <button class="btn btn-danger" onclick="openEmergencyModal()" id="addEmergencyBtn" style="flex: 1; font-size: 1.05rem;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
             Add Emergency Case
+          </button>
+
+          <!-- End Emergency Mode Button -->
+          <button class="btn btn-outline" onclick="endEmergencyMode()" id="endEmergencyBtn" style="display: none; color: var(--emergency-red); border-color: var(--emergency-red); font-weight: 700; flex: 1;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            </svg>
+            End Emergency Mode
           </button>
         </div>
       </div>
@@ -154,21 +173,26 @@
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
-              Consultation Time Settings
+              Consultation Time & Capacity Settings
             </h2>
-            <p class="card-subtitle">Configure average duration used by the waiting time formula</p>
+            <p class="card-subtitle">Configure average duration and daily patient capacity limit</p>
           </div>
         </div>
 
         <form onsubmit="handleSaveSettings(event)" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
-          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 180px;">
-            <label class="form-label" for="settingAvgTime">Avg Normal Patient (minutes)</label>
+          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 150px;">
+            <label class="form-label" for="settingAvgTime">Avg Patient (minutes)</label>
             <input type="number" id="settingAvgTime" class="form-input" min="1" max="120" required>
           </div>
 
-          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 180px;">
-            <label class="form-label" for="settingEmergencyTime">Emergency Duration (minutes)</label>
+          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 150px;">
+            <label class="form-label" for="settingEmergencyTime">Emergency Duration (min)</label>
             <input type="number" id="settingEmergencyTime" class="form-input" min="1" max="180" required>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 150px;">
+            <label class="form-label" for="settingDailyLimit">Daily Limit (patients/day)</label>
+            <input type="number" id="settingDailyLimit" class="form-input" min="1" max="500" required>
           </div>
 
           <button type="submit" class="btn btn-primary" id="saveSettingsBtn" style="height: 48px;">
@@ -219,9 +243,14 @@
               </h2>
               <p class="card-subtitle">Last In, First Out order • Highest Priority (Preempts Queue)</p>
             </div>
-            <span class="status-pill" id="adminEmergencyCountBadge" style="background: var(--emergency-red-pale); color: var(--emergency-red); border-color: var(--emergency-red-border);">
-              0 Emergencies
-            </span>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <button class="btn btn-outline btn-sm" id="clearStackBtn" onclick="endEmergencyMode()" style="display: none; color: var(--emergency-red); border-color: var(--emergency-red-border); font-size: 0.75rem;">
+                End Emergency
+              </button>
+              <span class="status-pill" id="adminEmergencyCountBadge" style="background: var(--emergency-red-pale); color: var(--emergency-red); border-color: var(--emergency-red-border);">
+                0 Emergencies
+              </span>
+            </div>
           </div>
 
           <p style="font-size: 0.8rem; color: var(--emergency-red); margin-bottom: 0.75rem; font-weight: 500;">
@@ -271,6 +300,63 @@
     </div>
   </div>
 
+  <!-- Walk-in Registration Modal Popup -->
+  <div id="walkinModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 class="modal-title" style="color: var(--brand-sky-deep); display: flex; align-items: center; gap: 0.5rem;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7" r="4"></circle>
+          <line x1="20" y1="8" x2="20" y2="14"></line>
+          <line x1="23" y1="11" x2="17" y2="11"></line>
+        </svg>
+        Register Walk-in Patient
+      </h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+        Add on-spot walk-in appointments directly to the FIFO Queue with full patient demographics.
+      </p>
+
+      <form onsubmit="handleWalkinSubmit(event)">
+        <div class="form-group">
+          <label class="form-label" for="walkinName">Patient Full Name *</label>
+          <input type="text" id="walkinName" class="form-input" placeholder="e.g. Ramesh Kumar" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="walkinPhone">Phone Number *</label>
+          <input type="tel" id="walkinPhone" class="form-input" placeholder="e.g. 9876543210" required>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label class="form-label" for="walkinAge">Age *</label>
+            <input type="number" id="walkinAge" class="form-input" min="1" max="120" placeholder="e.g. 28" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="walkinGender">Gender *</label>
+            <select id="walkinGender" class="form-input" required>
+              <option value="" disabled selected>Select</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="walkinDate">Appointment Date *</label>
+          <input type="date" id="walkinDate" class="form-input" required>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="closeWalkinModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="walkinSubmitBtn">Book Walk-in</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Site Footer -->
   <footer class="site-footer">
     <p>Doctor Appointment Queue System • Data Structures & Algorithms Project</p>
@@ -308,7 +394,10 @@
         return DSAEngine.getStatus();
       }
       if (endpoint.startsWith('/api/book')) {
-        return DSAEngine.book(body.name, body.phone);
+        return DSAEngine.book(body.name, body.phone, body.age, body.gender, body.date);
+      }
+      if (endpoint.startsWith('/api/emergency/end') || endpoint.startsWith('/api/emergency/clear')) {
+        return DSAEngine.endEmergency();
       }
       if (endpoint.startsWith('/api/wait')) {
         const url = new URL(endpoint, window.location.origin);
@@ -325,7 +414,7 @@
         return DSAEngine.cancel(body.token);
       }
       if (endpoint.startsWith('/api/settings')) {
-        return DSAEngine.saveSettings(body.avgTime, body.emergencyTime);
+        return DSAEngine.saveSettings(body.avgTime, body.emergencyTime, body.dailyLimit);
       }
       return { error: 'Unknown endpoint' };
     }
@@ -397,15 +486,21 @@
         document.getElementById('statusDot').classList.remove('offline');
         document.getElementById('statusText').textContent = isStaticMode ? 'Static Demo Mode' : 'System Live';
 
-        // Emergency banner
+        // Emergency banner & control buttons
         const emergencyBanner = document.getElementById('emergencyBanner');
         const stackPanel = document.getElementById('lifoStackPanel');
+        const endEmergencyBtn = document.getElementById('endEmergencyBtn');
+        const clearStackBtn = document.getElementById('clearStackBtn');
         if (data.emergencyMode) {
           emergencyBanner.classList.add('visible');
           stackPanel.classList.add('active-emergency');
+          if (endEmergencyBtn) endEmergencyBtn.style.display = 'inline-flex';
+          if (clearStackBtn) clearStackBtn.style.display = 'inline-flex';
         } else {
           emergencyBanner.classList.remove('visible');
           stackPanel.classList.remove('active-emergency');
+          if (endEmergencyBtn) endEmergencyBtn.style.display = 'none';
+          if (clearStackBtn) clearStackBtn.style.display = 'none';
         }
 
         // Current serving patient
@@ -421,8 +516,10 @@
         // Settings input fields (fill if user hasn't modified)
         const avgInput = document.getElementById('settingAvgTime');
         const emgInput = document.getElementById('settingEmergencyTime');
+        const limitInput = document.getElementById('settingDailyLimit');
         if (!avgInput.matches(':focus')) avgInput.value = data.avgTime;
         if (!emgInput.matches(':focus')) emgInput.value = data.emergencyTime;
+        if (limitInput && data.dailyLimit && !limitInput.matches(':focus')) limitInput.value = data.dailyLimit;
 
         // Render Panels
         renderFifoQueue(data.queue);
@@ -448,6 +545,7 @@
 
       let html = '';
       queue.forEach((patient, idx) => {
+        const metaStr = `${patient.gender || ''}${patient.age ? ', ' + patient.age + 'y' : ''}${patient.date ? ' • 📅 ' + patient.date : ''}`;
         html += `
           <div class="fifo-token-card">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -458,6 +556,9 @@
             </div>
             <div style="font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(patient.name)}">
               ${escapeHtml(patient.name)}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${escapeHtml(metaStr)}
             </div>
             <div style="font-size: 0.75rem; color: var(--text-muted);">
               Wait: ~${patient.wait} min
@@ -541,6 +642,70 @@
       }
     }
 
+    // End Emergency Mode
+    async function endEmergencyMode() {
+      const confirmed = confirm('End Emergency Mode? This will clear all pending emergencies and resume normal queue.');
+      if (!confirmed) return;
+
+      try {
+        await apiCall('/api/emergency/end', 'POST');
+        showToast('Emergency mode cleared! Regular queue resumed.', 'success');
+        fetchAdminStatus();
+      } catch (err) {
+        showToast('Error ending emergency mode', 'error');
+      }
+    }
+
+    // Walk-in Registration Modal Controls
+    function openWalkinModal() {
+      document.getElementById('walkinModal').classList.add('visible');
+      document.getElementById('walkinName').value = '';
+      document.getElementById('walkinPhone').value = '';
+      document.getElementById('walkinAge').value = '';
+      document.getElementById('walkinGender').value = '';
+      const today = new Date().toISOString().split('T')[0];
+      const dateInput = document.getElementById('walkinDate');
+      dateInput.value = today;
+      dateInput.min = today;
+      document.getElementById('walkinName').focus();
+    }
+
+    function closeWalkinModal() {
+      document.getElementById('walkinModal').classList.remove('visible');
+    }
+
+    async function handleWalkinSubmit(event) {
+      event.preventDefault();
+      const name = document.getElementById('walkinName').value.trim();
+      const phone = document.getElementById('walkinPhone').value.trim();
+      const age = parseInt(document.getElementById('walkinAge').value);
+      const gender = document.getElementById('walkinGender').value;
+      const date = document.getElementById('walkinDate').value;
+
+      if (!name || !phone || isNaN(age) || !gender || !date) {
+        showToast('Please fill all required patient details', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('walkinSubmitBtn');
+      btn.disabled = true;
+
+      try {
+        const res = await apiCall('/api/book', 'POST', { name, phone, age, gender, date });
+        let msg = `Booked Token #${res.label || res.token} for ${res.name}`;
+        if (res.rolledOver || res.capacityRollover) {
+          msg += ` (Capacity full on requested date, rescheduled to ${res.date})`;
+        }
+        showToast(msg, 'success');
+        closeWalkinModal();
+        fetchAdminStatus();
+      } catch (err) {
+        showToast('Error registering walk-in patient', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     // Modal controls
     function openEmergencyModal() {
       document.getElementById('emergencyModal').classList.add('visible');
@@ -583,14 +748,15 @@
       }
     }
 
-    // Save Consultation Time Settings
+    // Save Consultation Time & Daily Limit Settings
     async function handleSaveSettings(event) {
       event.preventDefault();
       const avgTime = parseInt(document.getElementById('settingAvgTime').value);
       const emergencyTime = parseInt(document.getElementById('settingEmergencyTime').value);
+      const dailyLimit = parseInt(document.getElementById('settingDailyLimit').value);
 
-      if (isNaN(avgTime) || avgTime <= 0 || isNaN(emergencyTime) || emergencyTime <= 0) {
-        showToast('Please provide valid positive minute values', 'error');
+      if (isNaN(avgTime) || avgTime <= 0 || isNaN(emergencyTime) || emergencyTime <= 0 || isNaN(dailyLimit) || dailyLimit <= 0) {
+        showToast('Please provide valid positive values', 'error');
         return;
       }
 
@@ -598,9 +764,16 @@
       btn.disabled = true;
 
       try {
-        const data = await apiCall('/api/settings', 'POST', { avgTime, emergencyTime });
+        const data = await apiCall('/api/settings', 'POST', { avgTime, emergencyTime, dailyLimit });
 
-        showToast(`Settings saved: Avg=${data.avgTime}m, Emergency=${data.emergencyTime}m`, 'success');
+        showToast(`Settings saved: Avg=${data.avgTime}m, Emergency=${data.emergencyTime}m, Limit=${data.dailyLimit}/day`, 'success');
+        fetchAdminStatus();
+      } catch (err) {
+        showToast('Error saving settings', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
         fetchAdminStatus();
       } catch (err) {
         showToast('Error saving settings', 'error');

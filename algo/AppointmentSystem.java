@@ -23,6 +23,7 @@ public class AppointmentSystem {
 
     private int avgTime = 10;          // minutes per normal patient (admin sets)
     private int emergencyTime = 20;    // minutes added per emergency (admin sets)
+    private int dailyLimit = 20;       // maximum patients allowed per day (admin sets)
 
     // ---------- Admin settings ----------
     public void setAvgTime(int minutes) {
@@ -33,12 +34,33 @@ public class AppointmentSystem {
         if (minutes > 0) emergencyTime = minutes;
     }
 
+    public void setDailyLimit(int limit) {
+        if (limit > 0) dailyLimit = limit;
+    }
+
     public int getAvgTime() { return avgTime; }
     public int getEmergencyTime() { return emergencyTime; }
+    public int getDailyLimit() { return dailyLimit; }
+
+    // Count patients already booked for a specific calendar date
+    public int getCountForDate(String date) {
+        if (date == null || date.isEmpty()) return 0;
+        int count = 0;
+        for (Patient p : queue) {
+            if (date.equals(p.date)) count++;
+        }
+        return count;
+    }
 
     // ---------- 1. Book appointment (enqueue) ----------
     public Patient bookAppointment(String name, String phone) {
         Patient p = new Patient(++normalCounter, name, phone, false);
+        queue.add(p);
+        return p;
+    }
+
+    public Patient bookAppointment(String name, String phone, int age, String gender, String date) {
+        Patient p = new Patient(++normalCounter, name, phone, age, gender, date, false);
         queue.add(p);
         return p;
     }
@@ -48,6 +70,17 @@ public class AppointmentSystem {
         Patient p = new Patient(++emergencyCounter, name, "-", true);
         stack.push(p);
         return p;
+    }
+
+    // Emergency End / Clear Button Feature
+    public boolean endEmergency() {
+        boolean hadEmergencies = !stack.isEmpty() || (current != null && current.emergency);
+        stack.clear();
+        if (current != null && current.emergency) {
+            current.status = "DONE";
+            current = null;
+        }
+        return hadEmergencies;
     }
 
     public boolean isEmergencyMode() {

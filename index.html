@@ -205,9 +205,32 @@
             <div id="nameError" class="form-error">Please enter the patient's name.</div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="patientPhone">Contact Phone Number</label>
-            <input type="tel" id="patientPhone" class="form-input" placeholder="e.g. 9876543210" autocomplete="tel">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem;">
+            <div class="form-group">
+              <label class="form-label" for="patientAge">Age (Years)</label>
+              <input type="number" id="patientAge" class="form-input" placeholder="e.g. 28" min="1" max="120" value="28">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="patientGender">Gender</label>
+              <select id="patientGender" class="form-input" style="height: 45px;">
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem;">
+            <div class="form-group">
+              <label class="form-label" for="patientDate">Appointment Date 📅</label>
+              <input type="date" id="patientDate" class="form-input" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="patientPhone">Contact Phone</label>
+              <input type="tel" id="patientPhone" class="form-input" placeholder="e.g. 9876543210" autocomplete="tel">
+            </div>
           </div>
 
           <button type="submit" class="btn btn-primary btn-full" id="bookSubmitBtn">
@@ -233,10 +256,19 @@
             </span>
           </div>
 
+          <div id="ticketRolloverNotice" class="status-pill" style="display: none; background: #FFF3CD; color: #856404; border-color: #FFEEBA; width: 100%; justify-content: center; font-size: 0.8rem; padding: 0.5rem; text-align: center;">
+            ⚠️ Daily Limit Reached: Rescheduled to <strong id="ticketRolloverDate" style="margin-left: 4px;"></strong>
+          </div>
+
           <div class="ticket-stats">
             <div class="stat-box">
               <div class="stat-label">Patient</div>
               <div class="stat-value" id="ticketName">--</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);" id="ticketDemographics">--</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Date 📅</div>
+              <div class="stat-value" id="ticketDateDisplay" style="font-size: 1rem;">--</div>
             </div>
             <div class="stat-box">
               <div class="stat-label">Est. Wait</div>
@@ -393,7 +425,10 @@
         return DSAEngine.getStatus();
       }
       if (endpoint.startsWith('/api/book')) {
-        return DSAEngine.book(body.name, body.phone);
+        return DSAEngine.book(body.name, body.phone, body.age, body.gender, body.date);
+      }
+      if (endpoint.startsWith('/api/emergency/end') || endpoint.startsWith('/api/emergency/clear')) {
+        return DSAEngine.endEmergency();
       }
       if (endpoint.startsWith('/api/wait')) {
         const url = new URL(endpoint, window.location.origin);
@@ -410,7 +445,7 @@
         return DSAEngine.cancel(body.token);
       }
       if (endpoint.startsWith('/api/settings')) {
-        return DSAEngine.saveSettings(body.avgTime, body.emergencyTime);
+        return DSAEngine.saveSettings(body.avgTime, body.emergencyTime, body.dailyLimit);
       }
       return { error: 'Unknown endpoint' };
     }
@@ -606,6 +641,7 @@
       let html = '';
       queue.forEach((patient, idx) => {
         const isMyToken = (savedMyToken && patient.token === savedMyToken);
+        const metaStr = `${patient.age ? patient.age + ' yrs, ' : ''}${patient.gender || ''}${patient.date ? ' • 📅 ' + patient.date : ''}`;
         html += `
           <div class="queue-item ${isMyToken ? 'my-token-row' : ''}">
             <div class="queue-item-left">
@@ -613,7 +649,8 @@
               <div>
                 <span class="queue-item-name">${escapeHtml(patient.name)}</span>
                 ${isMyToken ? '<span class="my-token-badge">Your Token</span>' : ''}
-                <div style="font-size: 0.75rem; color: var(--text-muted);">Position in line: ${idx + 1}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(metaStr)}</div>
+                <div style="font-size: 0.75rem; color: var(--brand-sky-darker); font-weight: 500;">Position in line: #${idx + 1}</div>
               </div>
             </div>
             <div class="queue-item-wait">
@@ -635,9 +672,16 @@
       event.preventDefault();
       const nameInput = document.getElementById('patientName');
       const phoneInput = document.getElementById('patientPhone');
+      const ageInput = document.getElementById('patientAge');
+      const genderInput = document.getElementById('patientGender');
+      const dateInput = document.getElementById('patientDate');
       const nameError = document.getElementById('nameError');
+
       const name = nameInput.value.trim();
       const phone = phoneInput.value.trim();
+      const age = parseInt(ageInput ? ageInput.value : 0) || 0;
+      const gender = genderInput ? genderInput.value : 'Other';
+      const date = dateInput ? dateInput.value : '';
 
       if (!name) {
         nameError.classList.add('visible');
@@ -651,7 +695,7 @@
       submitBtn.textContent = 'Booking...';
 
       try {
-        const data = await apiCall('/api/book', 'POST', { name, phone });
+        const data = await apiCall('/api/book', 'POST', { name, phone, age, gender, date });
 
         // Save token to localStorage
         savedMyToken = data.token;
@@ -667,8 +711,19 @@
         // Show ticket card
         document.getElementById('ticketToken').textContent = '#' + data.label;
         document.getElementById('ticketName').textContent = data.name;
+        document.getElementById('ticketDemographics').textContent = `${data.age || '—'} yrs • ${data.gender || 'Other'}`;
+        document.getElementById('ticketDateDisplay').textContent = data.date || 'Today';
         document.getElementById('ticketWait').textContent = data.wait + ' min';
         document.getElementById('ticketClock').textContent = formatClockTime(data.wait);
+
+        const rolloverNotice = document.getElementById('ticketRolloverNotice');
+        if (data.rolledOver) {
+          rolloverNotice.style.display = 'flex';
+          document.getElementById('ticketRolloverDate').textContent = data.date;
+        } else {
+          rolloverNotice.style.display = 'none';
+        }
+
         document.getElementById('ticketCard').style.display = 'flex';
 
         // Pre-fill tracking
@@ -677,7 +732,11 @@
 
         phoneInput.value = '';
 
-        showToast(`Token #${data.label} booked successfully!`, 'success');
+        if (data.rolledOver) {
+          showToast(`Capacity full for ${data.originalDate}. Booked for next date: ${data.date}!`, 'info');
+        } else {
+          showToast(`Token #${data.label} booked successfully!`, 'success');
+        }
         fetchStatus();
       } catch (err) {
         showToast(err.message || 'Error booking appointment', 'error');
@@ -792,6 +851,14 @@
 
     // Initialization
     window.addEventListener('DOMContentLoaded', () => {
+      // Set today as default and minimum date for appointment booking
+      const dateInput = document.getElementById('patientDate');
+      if (dateInput) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        dateInput.value = todayStr;
+        dateInput.min = todayStr;
+      }
+
       updateUserProfileUI();
       fetchStatus();
       setInterval(fetchStatus, 3000); // Poll every 3 seconds

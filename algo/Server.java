@@ -8,6 +8,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +35,8 @@ public class Server {
         server.createContext("/api/status", new StatusHandler());
         server.createContext("/api/wait", new WaitHandler());
         server.createContext("/api/emergency", new EmergencyHandler());
+        server.createContext("/api/emergency/end", new EndEmergencyHandler());
+        server.createContext("/api/emergency/clear", new EndEmergencyHandler());
         server.createContext("/api/next", new NextHandler());
         server.createContext("/api/cancel", new CancelHandler());
         server.createContext("/api/settings", new SettingsHandler());
@@ -53,8 +57,8 @@ public class Server {
 
     /**
      * POST /api/book
-     * Body: { "name": "...", "phone": "..." }
-     * Returns: { "label": "1", "token": 1, "name": "...", "wait": 10 }
+     * Body: { "name": "...", "phone": "...", "age": 25, "gender": "Male", "date": "2026-11-22" }
+     * Checks daily capacity and automatically rolls over to the next date if full.
      */
     static class BookHandler implements HttpHandler {
         @Override
@@ -68,6 +72,15 @@ public class Server {
             String body = readBody(exchange);
             String name = extractString(body, "name");
             String phone = extractString(body, "phone");
+            Integer ageObj = extractInt(body, "age");
+            int age = (ageObj != null && ageObj > 0) ? ageObj : 0;
+            String gender = extractString(body, "gender");
+            if (gender == null || gender.trim().isEmpty()) gender = "Other";
+
+            String date = extractString(body, "date");
+            if (date == null || date.trim().isEmpty()) {
+                date = LocalDate.now().toString();
+            }
 
             if (name == null || name.trim().isEmpty()) {
                 sendResponse(exchange, 400, "{\"error\":\"Patient name cannot be empty.\"}");
@@ -75,10 +88,25 @@ public class Server {
             }
             if (phone == null) phone = "";
 
+            boolean rolledOver = false;
+            String originalDate = date;
+
             Patient patient;
             int wait;
             synchronized (system) {
-                patient = system.bookAppointment(name.trim(), phone.trim());
+                int limit = system.getDailyLimit();
+                try {
+                    LocalDate d = LocalDate.parse(date);
+                    while (system.getCountForDate(d.toString()) >= limit) {
+                        d = d.plusDays(1);
+                        rolledOver = true;
+                    }
+                    date = d.toString();
+                } catch (DateTimeParseException e) {
+                    // Keep user-provided string if unparseable
+                }
+
+                patient = system.bookAppointment(name.trim(), phone.trim(), age, gender.trim(), date);
                 wait = system.getEstimatedWait(patient.token);
             }
 
@@ -88,7 +116,12 @@ public class Server {
             sb.append("\"token\":").append(patient.token).append(",");
             sb.append("\"name\":\"").append(escapeJson(patient.name)).append("\",");
             sb.append("\"phone\":\"").append(escapeJson(patient.phone)).append("\",");
-            sb.append("\"wait\":").append(wait);
+            sb.append("\"age\":").append(patient.age).append(",");
+            sb.append("\"gender\":\"").append(escapeJson(patient.gender)).append("\",");
+            sb.append("\"date\":\"").append(escapeJson(patient.date)).append("\",");
+            sb.append("\"wait\":").append(wait).append(",");
+            sb.append("\"rolledOver\":").append(rolledOver).append(",");
+            sb.append("\"originalDate\":\"").append(escapeJson(originalDate)).append("\"");
             sb.append("}");
 
             sendResponse(exchange, 200, sb.toString());
@@ -97,7 +130,7 @@ public class Server {
 
     /**
      * GET /api/status
-     * Returns: { current, emergencyMode, avgTime, emergencyTime, queue[], emergencies[] }
+     * Returns: { current, emergencyMode, avgTime, emergencyTime, dailyLimit, queue[], emergencies[] }
      */
     static class StatusHandler implements HttpHandler {
         @Override
@@ -112,6 +145,7 @@ public class Server {
             boolean emergencyMode;
             int avgTime;
             int emergencyTime;
+            int dailyLimit;
             List<Patient> queue;
             List<Patient> emergencies;
 
@@ -120,6 +154,7 @@ public class Server {
                 emergencyMode = system.isEmergencyMode();
                 avgTime = system.getAvgTime();
                 emergencyTime = system.getEmergencyTime();
+                dailyLimit = system.getDailyLimit();
                 queue = system.getQueueList();
                 emergencies = system.getEmergencyList();
             }
@@ -129,6 +164,7 @@ public class Server {
             sb.append("\"emergencyMode\":").append(emergencyMode).append(",");
             sb.append("\"avgTime\":").append(avgTime).append(",");
             sb.append("\"emergencyTime\":").append(emergencyTime).append(",");
+            sb.append("\"dailyLimit\":").append(dailyLimit).append(",");
 
             // current patient
             if (current == null) {
@@ -138,6 +174,9 @@ public class Server {
                 sb.append("\"token\":").append(current.token).append(",");
                 sb.append("\"label\":\"").append(escapeJson(current.label())).append("\",");
                 sb.append("\"name\":\"").append(escapeJson(current.name)).append("\",");
+                sb.append("\"age\":").append(current.age).append(",");
+                sb.append("\"gender\":\"").append(escapeJson(current.gender)).append("\",");
+                sb.append("\"date\":\"").append(escapeJson(current.date)).append("\",");
                 sb.append("\"emergency\":").append(current.emergency);
                 sb.append("},");
             }
@@ -156,6 +195,9 @@ public class Server {
                 sb.append("\"label\":\"").append(escapeJson(p.label())).append("\",");
                 sb.append("\"name\":\"").append(escapeJson(p.name)).append("\",");
                 sb.append("\"phone\":\"").append(escapeJson(p.phone)).append("\",");
+                sb.append("\"age\":").append(p.age).append(",");
+                sb.append("\"gender\":\"").append(escapeJson(p.gender)).append("\",");
+                sb.append("\"date\":\"").append(escapeJson(p.date)).append("\",");
                 sb.append("\"wait\":").append(wait);
                 sb.append("}");
             }
@@ -182,7 +224,7 @@ public class Server {
 
     /**
      * GET /api/wait?token=N
-     * Returns: { found, label, name, position, wait, status }
+     * Returns: { found, label, name, position, wait, status, age, gender, date }
      */
     static class WaitHandler implements HttpHandler {
         @Override
@@ -226,6 +268,9 @@ public class Server {
                 sb.append("\"found\":true,");
                 sb.append("\"label\":\"").append(escapeJson(current.label())).append("\",");
                 sb.append("\"name\":\"").append(escapeJson(current.name)).append("\",");
+                sb.append("\"age\":").append(current.age).append(",");
+                sb.append("\"gender\":\"").append(escapeJson(current.gender)).append("\",");
+                sb.append("\"date\":\"").append(escapeJson(current.date)).append("\",");
                 sb.append("\"position\":0,");
                 sb.append("\"wait\":0,");
                 sb.append("\"status\":\"SERVING\"");
@@ -251,6 +296,9 @@ public class Server {
                 sb.append("\"found\":true,");
                 sb.append("\"label\":\"").append(escapeJson(target.label())).append("\",");
                 sb.append("\"name\":\"").append(escapeJson(target.name)).append("\",");
+                sb.append("\"age\":").append(target.age).append(",");
+                sb.append("\"gender\":\"").append(escapeJson(target.gender)).append("\",");
+                sb.append("\"date\":\"").append(escapeJson(target.date)).append("\",");
                 sb.append("\"position\":").append(position).append(",");
                 sb.append("\"wait\":").append(wait).append(",");
                 sb.append("\"status\":\"WAITING\"");
@@ -302,6 +350,36 @@ public class Server {
     }
 
     /**
+     * POST /api/emergency/end
+     * Clears emergency mode and resumes normal queue.
+     */
+    static class EndEmergencyHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
+            if (!exchange.getRequestMethod().equalsIgnoreCase("POST")) {
+                sendResponse(exchange, 405, "{\"error\":\"Method not allowed. Use POST.\"}");
+                return;
+            }
+
+            boolean ended;
+            synchronized (system) {
+                ended = system.endEmergency();
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("{");
+            sb.append("\"success\":true,");
+            sb.append("\"emergencyEnded\":").append(ended).append(",");
+            sb.append("\"emergencyMode\":").append(system.isEmergencyMode()).append(",");
+            sb.append("\"message\":\"Emergency mode ended. Regular queue resumed.\"");
+            sb.append("}");
+
+            sendResponse(exchange, 200, sb.toString());
+        }
+    }
+
+    /**
      * POST /api/next
      * Doctor calls next patient (Emergency Stack first, then Normal Queue).
      */
@@ -329,6 +407,9 @@ public class Server {
                 sb.append("\"token\":").append(current.token).append(",");
                 sb.append("\"label\":\"").append(escapeJson(current.label())).append("\",");
                 sb.append("\"name\":\"").append(escapeJson(current.name)).append("\",");
+                sb.append("\"age\":").append(current.age).append(",");
+                sb.append("\"gender\":\"").append(escapeJson(current.gender)).append("\",");
+                sb.append("\"date\":\"").append(escapeJson(current.date)).append("\",");
                 sb.append("\"emergency\":").append(current.emergency);
                 sb.append("}");
             }
@@ -371,8 +452,8 @@ public class Server {
 
     /**
      * POST /api/settings
-     * Body: { "avgTime": N, "emergencyTime": M }
-     * Updates doctor consultation times.
+     * Body: { "avgTime": N, "emergencyTime": M, "dailyLimit": L }
+     * Updates doctor consultation times and daily patient capacity limit.
      */
     static class SettingsHandler implements HttpHandler {
         @Override
@@ -386,17 +467,20 @@ public class Server {
             String body = readBody(exchange);
             Integer avg = extractInt(body, "avgTime");
             Integer emg = extractInt(body, "emergencyTime");
+            Integer limit = extractInt(body, "dailyLimit");
 
             synchronized (system) {
                 if (avg != null && avg > 0) system.setAvgTime(avg);
                 if (emg != null && emg > 0) system.setEmergencyTime(emg);
+                if (limit != null && limit > 0) system.setDailyLimit(limit);
             }
 
             StringBuilder sb = new StringBuilder();
             sb.append("{");
             sb.append("\"success\":true,");
             sb.append("\"avgTime\":").append(system.getAvgTime()).append(",");
-            sb.append("\"emergencyTime\":").append(system.getEmergencyTime());
+            sb.append("\"emergencyTime\":").append(system.getEmergencyTime()).append(",");
+            sb.append("\"dailyLimit\":").append(system.getDailyLimit());
             sb.append("}");
 
             sendResponse(exchange, 200, sb.toString());
@@ -409,7 +493,6 @@ public class Server {
 
     /**
      * Handles preflight CORS OPTIONS requests.
-     * Returns true if request was handled.
      */
     private static boolean handleOptions(HttpExchange exchange) throws IOException {
         if (exchange.getRequestMethod().equalsIgnoreCase("OPTIONS")) {
